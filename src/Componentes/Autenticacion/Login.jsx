@@ -8,7 +8,8 @@ import { useAuth } from '../Autenticacion/AuthContext';
 // Material UI Components
 import {
   Container,
-  Paper,
+  Card,
+  CardContent,
   TextField,
   Button,
   Typography,
@@ -18,10 +19,7 @@ import {
   StepLabel,
   CircularProgress,
   Alert,
-  IconButton,
   InputAdornment,
-  Card,
-  CardContent,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -51,27 +49,20 @@ function Login() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    // Filtrar solo números en OTP
+    if (name === "otpCode" && !/^\d*$/.test(value)) return;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setError("");
   };
 
-  // Función para redirigir usuario
   const redirectUser = (tipoUsuario) => {
-    console.log('🔀 Redirigiendo usuario tipo:', tipoUsuario);
-    
-    switch (tipoUsuario) {
-      case 'Cliente':
-        navigate('/cliente', { replace: true });
-        break;
-      case 'Administrador':
-        navigate('/admin', { replace: true });
-        break;
-      case 'Repartidor':
-        navigate('/repartidor', { replace: true });
-        break;
-      default:
-        navigate('/', { replace: true });
-    }
+    console.log('Redirigiendo usuario tipo:', tipoUsuario);
+    const routes = {
+      'Cliente': '/cliente',
+      'Administrador': '/admin',
+      'Repartidor': '/repartidor'
+    };
+    navigate(routes[tipoUsuario] || '/', { replace: true });
   };
 
   const handleLoginSubmit = async (e) => {
@@ -101,13 +92,22 @@ function Login() {
         // Login sin MFA
         handleSuccessfulLogin(response.data);
       } else if (response.data.userId) {
-        // Requiere MFA
+        // Requiere MFA: Guardar userId y mostrar modal
         setFormData((prev) => ({ ...prev, userId: response.data.userId }));
-        setStep(1);
+
         MySwal.fire({
           icon: "info",
           title: "Código enviado por SMS",
           text: "Revisa tu teléfono para el código de 6 dígitos.",
+          allowOutsideClick: false,
+          allowEscapeKey: false,
+          showConfirmButton: true,
+          confirmButtonText: "Continuar",
+          confirmButtonColor: "#1976d2",
+        }).then((result) => {
+          if (result.isConfirmed) {
+            setStep(1); // Mostrar formulario OTP solo después de cerrar
+          }
         });
       }
     } catch (error) {
@@ -129,11 +129,11 @@ function Login() {
     setIsLoading(true);
     setError("");
 
-    if (!formData.otpCode || formData.otpCode.length !== 6) {
+    if (formData.otpCode.length !== 6) {
       MySwal.fire({
         icon: "error",
         title: "Código inválido",
-        text: "Ingresa un código de 6 dígitos recibido por SMS.",
+        text: "Debe contener exactamente 6 dígitos.",
       });
       setIsLoading(false);
       return;
@@ -145,8 +145,6 @@ function Login() {
         otpCode: formData.otpCode,
       });
 
-      console.log('Respuesta OTP:', response.data);
-
       if (response.data.token) {
         handleSuccessfulLogin(response.data);
       }
@@ -156,7 +154,7 @@ function Login() {
       setError(errorMsg);
       MySwal.fire({
         icon: "error",
-        title: "Error de verificación",
+        title: "Error",
         text: errorMsg,
       });
     } finally {
@@ -165,12 +163,7 @@ function Login() {
   };
 
   const handleSuccessfulLogin = (data) => {
-    console.log('✅ Login exitoso, datos:', data);
-    
-    // Actualizar contexto de autenticación
     authLogin(data.user, data.token);
-    
-    // Mostrar alerta de éxito y luego redirigir
     MySwal.fire({
       icon: "success",
       title: "¡Bienvenido!",
@@ -178,7 +171,6 @@ function Login() {
       timer: 1500,
       showConfirmButton: false,
     }).then(() => {
-      // Redirección después de que se cierra el alert
       redirectUser(data.user.TipoUsuario);
     });
   };
@@ -201,14 +193,7 @@ function Login() {
         py: 4
       }}
     >
-      <Card
-        elevation={8}
-        sx={{
-          width: '100%',
-          borderRadius: 3,
-          overflow: 'visible'
-        }}
-      >
+      <Card elevation={8} sx={{ width: '100%', borderRadius: 3 }}>
         <CardContent sx={{ p: 4 }}>
           {/* Header */}
           <Box sx={{ textAlign: 'center', mb: 4 }}>
@@ -248,14 +233,14 @@ function Login() {
             ))}
           </Stepper>
 
-          {/* Error Alert */}
+          {/* Error */}
           {error && (
             <Alert severity="error" sx={{ mb: 3 }}>
               {error}
             </Alert>
           )}
 
-          {/* Forms */}
+          {/* Paso 1: Credenciales */}
           {step === 0 ? (
             <form onSubmit={handleLoginSubmit}>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -284,7 +269,7 @@ function Login() {
                   type="password"
                   value={formData.password}
                   onChange={handleChange}
-                  placeholder="Tu contraseña"
+                  placeholder="••••••••"
                   required
                   InputProps={{
                     startAdornment: (
@@ -301,39 +286,36 @@ function Login() {
                   variant="contained"
                   size="large"
                   disabled={isLoading}
-                  sx={{
-                    py: 1.5,
-                    fontSize: '1.1rem',
-                    fontWeight: 'bold'
-                  }}
+                  sx={{ py: 1.5, fontSize: '1.1rem', fontWeight: 'bold' }}
                 >
-                  {isLoading ? (
-                    <CircularProgress size={24} color="inherit" />
-                  ) : (
-                    "Iniciar Sesión"
-                  )}
+                  {isLoading ? <CircularProgress size={24} /> : "Iniciar Sesión"}
                 </Button>
               </Box>
             </form>
           ) : (
+            /* Paso 2: OTP */
             <form onSubmit={handleOTPSubmit}>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <TextField
                   fullWidth
-                  label="Código OTP (6 dígitos)"
+                  label="Código de 6 dígitos"
                   name="otpCode"
                   value={formData.otpCode}
                   onChange={handleChange}
-                  placeholder="123456"
+                  placeholder="000000"
+                  autoFocus
+                  required
                   inputProps={{
                     maxLength: 6,
+                    inputMode: 'numeric',
+                    pattern: '[0-9]*',
                     style: {
                       textAlign: 'center',
-                      fontSize: '1.2rem',
-                      letterSpacing: '0.5em'
+                      fontSize: '1.8rem',
+                      letterSpacing: '0.5em',
+                      fontWeight: 'bold'
                     }
                   }}
-                  required
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -341,15 +323,10 @@ function Login() {
                       </InputAdornment>
                     ),
                   }}
-                  onKeyPress={(e) => {
-                    if (!/[0-9]/.test(e.key)) {
-                      e.preventDefault();
-                    }
-                  }}
                 />
 
                 <Typography variant="body2" color="text.secondary" textAlign="center">
-                  Revisa tu teléfono para el código OTP enviado.
+                  Ingresa el código recibido por SMS
                 </Typography>
 
                 <Button
@@ -358,32 +335,26 @@ function Login() {
                   variant="contained"
                   size="large"
                   disabled={isLoading || formData.otpCode.length !== 6}
-                  sx={{
-                    py: 1.5,
-                    fontSize: '1.1rem',
-                    fontWeight: 'bold'
-                  }}
+                  sx={{ py: 1.5, fontSize: '1.1rem', fontWeight: 'bold' }}
                 >
-                  {isLoading ? (
-                    <CircularProgress size={24} color="inherit" />
-                  ) : (
-                    "Confirmar Código"
-                  )}
+                  {isLoading ? <CircularProgress size={24} /> : "Verificar Código"}
                 </Button>
 
-                <Box sx={{ textAlign: 'center', pt: 2 }}>
+                <Box sx={{ textAlign: 'center' }}>
                   <Button
                     startIcon={<ArrowBack />}
                     onClick={goBack}
-                    color="primary"
+                    color="inherit"
+                    size="small"
                   >
-                    Volver a credenciales
+                    Volver al inicio
                   </Button>
                 </Box>
               </Box>
             </form>
           )}
 
+          {/* Registro */}
           <Box sx={{ textAlign: 'center', mt: 4, pt: 3, borderTop: 1, borderColor: 'divider' }}>
             <Typography variant="body2" color="text.secondary">
               ¿No tienes cuenta?{" "}
